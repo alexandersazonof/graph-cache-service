@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from "@nestjs/common";
 import { NetworkUtils } from '../utils/network.utils';
 import { CacheService } from '../cache/cache.service';
 import * as crypto from 'crypto';
@@ -45,6 +45,12 @@ export class GraphService {
         console.error(`Request failed: ${error.message}`);
         attempts++;
         if (attempts >= retryLimit) {
+          if (error.response && error.response.status === 429) {
+            throw new HttpException(
+              'Too Many Requests',
+              HttpStatus.TOO_MANY_REQUESTS,
+            );
+          }
           throw new Error(
             `Failed to execute request after ${retryLimit} attempts`,
           );
