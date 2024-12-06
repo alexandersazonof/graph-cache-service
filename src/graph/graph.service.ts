@@ -1,4 +1,4 @@
-import { HttpException, HttpStatus, Injectable } from "@nestjs/common";
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { NetworkUtils } from '../utils/network.utils';
 import { CacheService } from '../cache/cache.service';
 import * as crypto from 'crypto';
@@ -6,6 +6,8 @@ import axios from 'axios';
 
 @Injectable()
 export class GraphService {
+  private readonly logger = new Logger(GraphService.name);
+
   constructor(
     private readonly networkUtils: NetworkUtils,
     private readonly cacheService: CacheService,
@@ -16,10 +18,12 @@ export class GraphService {
     version: string,
     request: { query: string; variables?: any },
   ): Promise<any> {
+    this.logger.log(`Executing GraphQL query for chainId: ${chainId}`);
     const key = this.generateKey(chainId, version, JSON.stringify(request));
     const cacheResponse = this.cacheService.get(key);
 
     if (cacheResponse) {
+      this.logger.log(`Returning cached response for chainId: ${chainId}`);
       return cacheResponse;
     }
 
@@ -28,6 +32,7 @@ export class GraphService {
     const ttl = this.cacheService.generateExpirationTime();
     this.cacheService.set(key, response, ttl);
 
+    this.logger.log(`Returning response for chainId: ${chainId}`);
     return response;
   }
 
@@ -42,10 +47,11 @@ export class GraphService {
       try {
         return await this.executeToGraph(link, request);
       } catch (error) {
-        console.error(`Request failed: ${error.message}`);
+        this.logger.error(`Request failed: ${error.message}`);
         attempts++;
         if (attempts >= retryLimit) {
           if (error.response && error.response.status === 429) {
+            this.logger.error(`After ${attempts} attempts, throw error`);
             throw new HttpException(
               'Too Many Requests',
               HttpStatus.TOO_MANY_REQUESTS,
