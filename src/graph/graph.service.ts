@@ -57,6 +57,9 @@ export class GraphService {
               HttpStatus.TOO_MANY_REQUESTS,
             );
           }
+          this.logger.error(
+            `After ${attempts} attempts, throw error, data: ${JSON.stringify(request)}`,
+          );
           throw new Error(
             `Failed to execute request after ${retryLimit} attempts`,
           );
