@@ -14,7 +14,7 @@ export class GraphService {
   ) {}
 
   async execute(
-    chainId: number,
+    chainId: string,
     version: string,
     request: { query: string; variables?: any },
   ): Promise<any> {
@@ -90,7 +90,7 @@ export class GraphService {
     }
   }
 
-  private generateKey(chainId: number, version: string, query: string): string {
+  private generateKey(chainId: string, version: string, query: string): string {
     const key = `${chainId}-${version}-${query}`;
     return crypto.createHash('sha256').update(key).digest('hex');
   }

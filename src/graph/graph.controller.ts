@@ -13,10 +13,6 @@ export class GraphController {
     @Param('version') version?: string,
   ): Promise<string> {
     const resolvedVersion = version || 'version/latest';
-    return await this.graphService.execute(
-      parseInt(chainId),
-      resolvedVersion,
-      body,
-    );
+    return await this.graphService.execute(chainId, resolvedVersion, body);
   }
 }
