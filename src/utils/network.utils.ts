@@ -8,21 +8,30 @@ export class NetworkUtils {
   private readonly zkSyncUrl = this.configService.get<string>('ZKSYNC_URL');
   private readonly baseUrl = this.configService.get<string>('BASE_URL');
   private readonly arbitrumUrl = this.configService.get<string>('ARBITRUM_URL');
+  private readonly arbitrumPlasmaUrl = this.configService.get<string>(
+    'ARBITRUM_PLASMA_URL',
+  );
+  private readonly basePlasmaUrl =
+    this.configService.get<string>('BASE_PLASMA_URL');
 
   constructor(private configService: ConfigService) {}
 
-  getLinkByChainId(chainId: number) {
+  getLinkByChainId(chainId: string) {
     switch (chainId) {
-      case 1:
+      case '1':
         return this.ethUrl;
-      case 137:
+      case '137':
         return this.polygonUrl;
-      case 324:
+      case '324':
         return this.zkSyncUrl;
-      case 8453:
+      case '8453':
         return this.baseUrl;
-      case 42161:
+      case '42161':
         return this.arbitrumUrl;
+      case '42161-plasma':
+        return this.arbitrumPlasmaUrl;
+      case '8453-plasma':
+        return this.basePlasmaUrl;
       default:
         throw new Error(`Unsupported chainId: ${chainId}`);
     }
