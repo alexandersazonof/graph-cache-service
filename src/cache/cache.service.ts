@@ -1,7 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-const DEFAULT_TTL = 10 * 60 * 1000; // 10 min
+const DEFAULT_TTL = 120 * 60 * 1000; // 120 min
+const DEFAULT_TTL_EXCLUDE_ENTITY = 10 * 60 * 1000; // 10 min
+const EXCLUDE_ENTITY = [
+  'userbalance',
+  'userbalances',
+  'userbalancehistory',
+  'userbalancehistories',
+];
 
 @Injectable()
 export class CacheService {
@@ -26,7 +33,10 @@ export class CacheService {
     return item.value;
   }
 
-  generateExpirationTime(): number {
+  generateExpirationTime(query: string): number {
+    if (EXCLUDE_ENTITY.some((entity) => query.toLowerCase().includes(entity))) {
+      return DEFAULT_TTL_EXCLUDE_ENTITY;
+    }
     return this.configService.get<number>('CACHE_TTL') || DEFAULT_TTL;
   }
 }

@@ -23,16 +23,20 @@ export class GraphService {
     const cacheResponse = this.cacheService.get(key);
 
     if (cacheResponse) {
-      this.logger.log(`Returning cached response for chainId: ${chainId}`);
+      this.logger.log(
+        `Returning cached response for chainId: ${chainId} version: ${version}`,
+      );
       return cacheResponse;
     }
 
     const link = `${this.networkUtils.getLinkByChainId(chainId)}/${version}`;
     const response = await this.executeWithRetry(link, request, 3);
-    const ttl = this.cacheService.generateExpirationTime();
+    const ttl = this.cacheService.generateExpirationTime(request.query);
     this.cacheService.set(key, response, ttl);
 
-    this.logger.log(`Returning response for chainId: ${chainId}`);
+    this.logger.log(
+      `Returning response for chainId: ${chainId} version: ${version} ttl: ${ttl}`,
+    );
     return response;
   }
 
