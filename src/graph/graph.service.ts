@@ -24,7 +24,6 @@ export class GraphService {
     request: { query: string; variables?: any },
   ): Promise<any> {
     this.metricsService.incrementGraphRequestCount(chainId);
-    this.metricsService.incrementGraphChainRequestCount(chainId, version);
 
     this.logger.log(`Executing GraphQL query for chainId: ${chainId}`);
     const key = this.generateKey(chainId, version, JSON.stringify(request));
@@ -40,6 +39,8 @@ export class GraphService {
     let link = `${this.networkUtils.getLinkByChainId(chainId)}/${version}`;
     let response;
     try {
+      this.metricsService.incrementGraphChainRequestCount(chainId, version);
+      this.metricsService.incrementGraphInRequestCount(chainId, version);
       response = await this.executeWithRetry(link, request, chainId, version);
     } catch (e) {
       this.metricsService.incrementGraphErrorCount(chainId);

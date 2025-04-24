@@ -64,6 +64,16 @@ import { Counter } from 'prom-client';
         });
       },
     },
+    {
+      provide: 'GRAPH_IN_REQUESTS',
+      useFactory: () => {
+        return new Counter({
+          name: 'graph_in_requests',
+          help: 'Total in GraphQL',
+          labelNames: ['chainId', 'version'],
+        });
+      },
+    },
   ],
   imports: [
     PrometheusModule.register({

@@ -15,6 +15,8 @@ export class MetricsService {
     private readonly totalChainRequests: Counter<string>,
     @Inject('GRAPH_TOTAL_ERRORS')
     private readonly totalErrors: Counter<string>,
+    @Inject('GRAPH_IN_REQUESTS')
+    private readonly graphInRequests: Counter<string>,
   ) {}
 
   incrementErrorCount() {
@@ -38,5 +40,9 @@ export class MetricsService {
 
   incrementGraphErrorCount(chainId: string) {
     this.totalErrors.inc({ chainId });
+  }
+
+  incrementGraphInRequestCount(chainId: string, version: string) {
+    this.graphInRequests.inc({ chainId, version });
   }
 }
