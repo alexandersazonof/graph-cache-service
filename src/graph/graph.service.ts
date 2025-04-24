@@ -3,14 +3,19 @@ import { NetworkUtils } from '../utils/network.utils';
 import { CacheService } from '../cache/cache.service';
 import * as crypto from 'crypto';
 import axios from 'axios';
+import { ConfigService } from '@nestjs/config';
+import { MetricsService } from '../metrics/metrics.service';
 
 @Injectable()
 export class GraphService {
   private readonly logger = new Logger(GraphService.name);
+  private readonly authKey = this.configService.get<string>('EXPLORER_API_KEY');
 
   constructor(
     private readonly networkUtils: NetworkUtils,
     private readonly cacheService: CacheService,
+    private readonly configService: ConfigService,
+    private readonly metricsService: MetricsService,
   ) {}
 
   async execute(
@@ -18,6 +23,9 @@ export class GraphService {
     version: string,
     request: { query: string; variables?: any },
   ): Promise<any> {
+    this.metricsService.incrementGraphRequestCount(chainId);
+    this.metricsService.incrementGraphChainRequestCount(chainId, version);
+
     this.logger.log(`Executing GraphQL query for chainId: ${chainId}`);
     const key = this.generateKey(chainId, version, JSON.stringify(request));
     const cacheResponse = this.cacheService.get(key);
@@ -29,8 +37,42 @@ export class GraphService {
       return cacheResponse;
     }
 
-    const link = `${this.networkUtils.getLinkByChainId(chainId)}/${version}`;
-    const response = await this.executeWithRetry(link, request, 3);
+    let link = `${this.networkUtils.getLinkByChainId(chainId)}/${version}`;
+    let response;
+    try {
+      response = await this.executeWithRetry(link, request, chainId, version);
+    } catch (e) {
+      this.metricsService.incrementGraphErrorCount(chainId);
+      try {
+        // #2 try to call latest version
+        this.metricsService.incrementGraphChainRequestCount(chainId, 'latest');
+        this.logger.log(
+          `Try to call latest version instead of ${version} for chainId: ${chainId}`,
+        );
+        version = 'version/latest';
+        link = `${this.networkUtils.getLinkByChainId(chainId)}/${version}`;
+        response = await this.executeWithRetry(link, request, chainId, version);
+      } catch (e) {
+        // #3 try to call explorer
+        link = this.networkUtils.getExplorerLinkByChainId(chainId);
+        if (link) {
+          this.metricsService.incrementGraphChainRequestCount(chainId, 'explorer');
+          this.logger.log(
+            `Try to call explorer instead of ${version} for chainId: ${chainId}`,
+          );
+          response = await this.executeWithRetry(
+            link,
+            request,
+            chainId,
+            'explorer',
+            true,
+          );
+        } else {
+          this.logger.log(`No explorer link found for chainId: ${chainId}`);
+          throw e;
+        }
+      }
+    }
     const ttl = this.cacheService.generateExpirationTime(request.query);
     this.cacheService.set(key, response, ttl);
 
@@ -43,26 +85,33 @@ export class GraphService {
   private async executeWithRetry(
     link: string,
     request: { query: string; variables?: any },
-    retryLimit: number,
-    delay: number = 30000,
+    chainId: string,
+    version: string,
+    useApiKey: boolean = false,
+    retryLimit: number = 3,
+    delay: number = 3000,
   ): Promise<any> {
     let attempts = 0;
     while (attempts < retryLimit) {
       try {
-        return await this.executeToGraph(link, request);
+        return await this.executeToGraph(link, request, useApiKey);
       } catch (error) {
-        this.logger.error(`Request failed: ${error.message}`);
+        this.logger.error(
+          `Request failed chainId: ${chainId} version: ${version} \nmessage: ${error.message}`,
+        );
         attempts++;
         if (attempts >= retryLimit) {
-          if (error.response && error.response.status === 429) {
-            this.logger.error(`After ${attempts} attempts, throw error`);
+          if (error.status && error.status === 429) {
+            this.logger.error(
+              `After ${attempts} attempts, throw error because got 429 status`,
+            );
             throw new HttpException(
               'Too Many Requests',
               HttpStatus.TOO_MANY_REQUESTS,
             );
           }
           this.logger.error(
-            `After ${attempts} attempts, throw error, data: ${JSON.stringify(request)}`,
+            `After ${attempts} attempts, throw error, \n request: ${JSON.stringify(request)}`,
           );
           throw new Error(
             `Failed to execute request after ${retryLimit} attempts`,
@@ -76,11 +125,18 @@ export class GraphService {
   private async executeToGraph(
     link: string,
     request: { query: string; variables?: any },
+    useApiKey: boolean = false,
   ): Promise<any> {
     try {
-      const response = await axios.post(link, request, {
-        headers: { 'Content-Type': 'application/json' },
-      });
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      if (useApiKey) {
+        headers['Authorization'] = `Bearer ${this.authKey}`;
+      }
+
+      const response = await axios.post(link, request, { headers });
 
       if (response.data.errors) {
         throw new Error(
@@ -90,7 +146,13 @@ export class GraphService {
 
       return response.data;
     } catch (error) {
-      throw new Error(`Failed to execute GraphQL query: ${error.message}`);
+      if (error.response && error.response.status === 429) {
+        throw new HttpException(
+          'Too Many Requests',
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      throw new Error(error.message);
     }
   }
 
