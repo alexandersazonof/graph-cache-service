@@ -18,10 +18,6 @@ export class GraphService {
     version: string,
     request: { query: string; variables?: any },
   ): Promise<any> {
-    // TODO remove temp solution
-    if (chainId === '8453') {
-      version = 'v0.0.51';
-    }
     this.logger.log(`Executing GraphQL query for chainId: ${chainId}`);
     const key = this.generateKey(chainId, version, JSON.stringify(request));
     const cacheResponse = this.cacheService.get(key);
