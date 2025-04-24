@@ -9,6 +9,12 @@ export class MetricsService {
     private readonly requestsCounter: Counter<string>,
     @Inject('TOO_MANY_REQUESTS_COUNTER')
     private readonly tooManyRequestsCounter: Counter<string>,
+    @Inject('GRAPH_TOTAL_REQUESTS')
+    private readonly totalRequests: Counter<string>,
+    @Inject('GRAPH_TOTAL_CHAIN_REQUESTS')
+    private readonly totalChainRequests: Counter<string>,
+    @Inject('GRAPH_TOTAL_ERRORS')
+    private readonly totalErrors: Counter<string>,
   ) {}
 
   incrementErrorCount() {
@@ -20,5 +26,17 @@ export class MetricsService {
     if (status === 429) {
       this.tooManyRequestsCounter.inc();
     }
+  }
+
+  incrementGraphRequestCount(chainId: string) {
+    this.totalRequests.inc({ chainId });
+  }
+
+  incrementGraphChainRequestCount(chainId: string, version: string) {
+    this.totalChainRequests.inc({ chainId, version });
+  }
+
+  incrementGraphErrorCount(chainId: string) {
+    this.totalErrors.inc({ chainId });
   }
 }
