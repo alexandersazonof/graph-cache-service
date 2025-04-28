@@ -45,19 +45,13 @@ export class GraphService {
     } catch (e) {
       this.metricsService.incrementGraphErrorCount(chainId);
       try {
-        // #2 try to call latest version
-        this.metricsService.incrementGraphChainRequestCount(chainId, 'latest');
-        this.logger.log(
-          `Try to call latest version instead of ${version} for chainId: ${chainId}`,
-        );
-        version = 'version/latest';
-        link = `${this.networkUtils.getLinkByChainId(chainId)}/${version}`;
-        response = await this.executeWithRetry(link, request, chainId, version);
-      } catch (e) {
-        // #3 try to call explorer
+        // #2 try to call explorer
         link = this.networkUtils.getExplorerLinkByChainId(chainId);
         if (link) {
-          this.metricsService.incrementGraphChainRequestCount(chainId, 'explorer');
+          this.metricsService.incrementGraphChainRequestCount(
+            chainId,
+            'explorer',
+          );
           this.logger.log(
             `Try to call explorer instead of ${version} for chainId: ${chainId}`,
           );
@@ -72,6 +66,12 @@ export class GraphService {
           this.logger.log(`No explorer link found for chainId: ${chainId}`);
           throw e;
         }
+      } catch (e) {
+        this.logger.log(
+          `Error while executing explorer GraphQL query for chainId: ${chainId}`,
+          e,
+        );
+        throw e;
       }
     }
     const ttl = this.cacheService.generateExpirationTime(request.query);
