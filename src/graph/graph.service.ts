@@ -89,8 +89,8 @@ export class GraphService {
     chainId: string,
     version: string,
     useApiKey: boolean = false,
-    retryLimit: number = 3,
-    delay: number = 3000,
+    retryLimit: number = 2,
+    delay: number = 1000,
   ): Promise<any> {
     let attempts = 0;
     while (attempts < retryLimit) {
