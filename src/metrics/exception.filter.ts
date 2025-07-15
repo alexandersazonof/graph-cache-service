@@ -21,8 +21,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     const status =
       exception instanceof HttpException ? exception.getStatus() : 500;
+    const message =
+      exception instanceof HttpException ? exception.message : 'Unknown error';
 
     response.status(status).json({
+      message: message,
       statusCode: status,
       timestamp: new Date().toISOString(),
       path: request.url,
