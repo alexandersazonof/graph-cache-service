@@ -60,17 +60,18 @@ export class GraphService {
       this.metricsService.incrementGraphInRequestCount(chainId, version);
       response = await this.executeWithRetry(link, request, chainId, version);
     } catch (e) {
-      this.metricsService.incrementGraphErrorCount(chainId);
-      try {
-        // #2 try to call latest version
-        this.metricsService.incrementGraphChainRequestCount(chainId, 'latest');
-        this.logger.log(
-          `Try to call latest version instead of ${version} for chainId: ${chainId}`,
-        );
-        version = 'version/latest';
-        link = `${this.networkUtils.getLinkByChainId(chainId)}/${version}`;
-        response = await this.executeWithRetry(link, request, chainId, version);
-      } catch (e) {
+      // TODO enable after fix latest version
+      // this.metricsService.incrementGraphErrorCount(chainId);
+      // try {
+      //   // #2 try to call latest version
+      //   this.metricsService.incrementGraphChainRequestCount(chainId, 'latest');
+      //   this.logger.log(
+      //     `Try to call latest version instead of ${version} for chainId: ${chainId}`,
+      //   );
+      //   version = 'version/latest';
+      //   link = `${this.networkUtils.getLinkByChainId(chainId)}/${version}`;
+      //   response = await this.executeWithRetry(link, request, chainId, version);
+      // } catch (e) {
         try {
           // #3 try to call explorer
           link = this.networkUtils.getExplorerLinkByChainId(chainId);
@@ -99,7 +100,7 @@ export class GraphService {
             e,
           );
           throw e;
-        }
+        // }
       }
     }
     const ttl = this.cacheService.generateExpirationTime(request.query);
