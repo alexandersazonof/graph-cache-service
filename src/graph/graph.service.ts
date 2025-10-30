@@ -54,6 +54,9 @@ export class GraphService {
     }
 
     let link = `${this.networkUtils.getLinkByChainId(chainId)}/${version}`;
+    if (this.networkUtils.isCustomInfrastructure(chainId)) {
+      link = this.networkUtils.getExplorerLinkByChainId(chainId);
+    }
     let response;
     try {
       this.metricsService.incrementGraphChainRequestCount(chainId, version);

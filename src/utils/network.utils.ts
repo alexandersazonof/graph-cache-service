@@ -13,6 +13,8 @@ export class NetworkUtils {
   );
   private readonly basePlasmaUrl =
     this.configService.get<string>('BASE_PLASMA_URL');
+  private readonly hypeEvmUrl = this.configService.get<string>('HYPE_EVM_URL');
+
 
   private readonly ethExplorerUrl = this.configService.get<string>('ETH_EXPLORER_URL');
   private readonly polygonExplorerUrl = this.configService.get<string>('POLYGON_EXPLORER_URL');
@@ -34,6 +36,8 @@ export class NetworkUtils {
         return this.baseUrl;
       case '42161':
         return this.arbitrumUrl;
+      case '999':
+        return this.hypeEvmUrl;
       case '42161-plasma':
         return this.arbitrumPlasmaUrl;
       case '8453-plasma':
@@ -55,8 +59,14 @@ export class NetworkUtils {
         return this.baseExplorerUrl;
       case '42161':
         return this.arbitrumExplorerUrl;
+      case '999':
+        return this.hypeEvmUrl;
       default:
         throw new Error(`Unsupported chainId: ${chainId}`);
     }
+  }
+
+  isCustomInfrastructure(chainId: string) {
+    return chainId === '999';
   }
 }
