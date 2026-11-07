@@ -4,12 +4,19 @@ import { CacheService } from '../cache/cache.service';
 import * as crypto from 'crypto';
 import axios from 'axios';
 import { ConfigService } from '@nestjs/config';
-import { MetricsService } from '../metrics/metrics.service';
+import { GraphSource, MetricsService } from '../metrics/metrics.service';
 import { DocumentNode, OperationDefinitionNode, parse } from 'graphql';
+import { getPositiveInteger } from '../utils/config.utils';
 
 @Injectable()
 export class GraphService {
   private readonly logger = new Logger(GraphService.name);
+  private readonly inFlightRequests = new Map<string, Promise<any>>();
+  private readonly requestTimeout = getPositiveInteger(
+    this.configService,
+    'GRAPH_REQUEST_TIMEOUT_MS',
+    10_000,
+  );
   private readonly authKey = this.configService.get<string>('EXPLORER_API_KEY');
   private readonly maxAliasCount = this.configService.get<number>(
     'MAX_ALIAS_COUNT',
@@ -44,24 +51,55 @@ export class GraphService {
     }
 
     const key = this.generateKey(chainId, version, JSON.stringify(request));
-    const cacheResponse = this.cacheService.get(key);
+    const cacheResponse = await this.cacheService.get(key);
 
-    if (cacheResponse) {
+    if (cacheResponse !== null) {
+      this.metricsService.recordCacheLookup(chainId, 'hit');
       this.logger.log(
         `Returning cached response for chainId: ${chainId} version: ${version}`,
       );
       return cacheResponse;
     }
 
+    this.metricsService.recordCacheLookup(chainId, 'miss');
+    const pending = this.inFlightRequests.get(key);
+    if (pending) {
+      this.metricsService.incrementDeduplicatedRequestCount(chainId);
+      return pending;
+    }
+
+    const execution = this.fetchAndCache(key, chainId, version, request);
+    this.inFlightRequests.set(key, execution);
+    try {
+      return await execution;
+    } finally {
+      this.inFlightRequests.delete(key);
+    }
+  }
+
+  private async fetchAndCache(
+    key: string,
+    chainId: string,
+    version: string,
+    request: { query: string; variables?: any },
+  ): Promise<any> {
     let link = `${this.networkUtils.getLinkByChainId(chainId)}/${version}`;
-    if (this.networkUtils.isCustomInfrastructure(chainId)) {
+    const isCustomInfrastructure =
+      this.networkUtils.isCustomInfrastructure(chainId);
+    if (isCustomInfrastructure) {
       link = this.networkUtils.getExplorerLinkByChainId(chainId);
     }
     let response;
     try {
       this.metricsService.incrementGraphChainRequestCount(chainId, version);
       this.metricsService.incrementGraphInRequestCount(chainId, version);
-      response = await this.executeWithRetry(link, request, chainId, version);
+      response = await this.executeWithRetry(
+        link,
+        request,
+        chainId,
+        version,
+        isCustomInfrastructure ? 'custom' : 'graph',
+      );
     } catch (e) {
       // TODO enable after fix latest version
       // this.metricsService.incrementGraphErrorCount(chainId);
@@ -75,39 +113,40 @@ export class GraphService {
       //   link = `${this.networkUtils.getLinkByChainId(chainId)}/${version}`;
       //   response = await this.executeWithRetry(link, request, chainId, version);
       // } catch (e) {
-        try {
-          // #3 try to call explorer
-          link = this.networkUtils.getExplorerLinkByChainId(chainId);
-          if (link) {
-            this.metricsService.incrementGraphChainRequestCount(
-              chainId,
-              'explorer',
-            );
-            this.logger.log(
-              `Try to call explorer instead of ${version} for chainId: ${chainId}`,
-            );
-            response = await this.executeWithRetry(
-              link,
-              request,
-              chainId,
-              'explorer',
-              true,
-            );
-          } else {
-            this.logger.log(`No explorer link found for chainId: ${chainId}`);
-            throw e;
-          }
-        } catch (e) {
-          this.logger.log(
-            `Error while executing explorer GraphQL query for chainId: ${chainId}`,
-            e,
+      try {
+        // #3 try to call explorer
+        link = this.networkUtils.getExplorerLinkByChainId(chainId);
+        if (link) {
+          this.metricsService.incrementGraphChainRequestCount(
+            chainId,
+            'explorer',
           );
+          this.logger.log(
+            `Try to call explorer instead of ${version} for chainId: ${chainId}`,
+          );
+          response = await this.executeWithRetry(
+            link,
+            request,
+            chainId,
+            'explorer',
+            'explorer',
+            true,
+          );
+        } else {
+          this.logger.log(`No explorer link found for chainId: ${chainId}`);
           throw e;
+        }
+      } catch (e) {
+        this.logger.log(
+          `Error while executing explorer GraphQL query for chainId: ${chainId}`,
+          e,
+        );
+        throw e;
         // }
       }
     }
     const ttl = this.cacheService.generateExpirationTime(request.query);
-    this.cacheService.set(key, response, ttl);
+    await this.cacheService.set(key, response, ttl);
 
     this.logger.log(
       `Returning response for chainId: ${chainId} version: ${version} ttl: ${ttl}`,
@@ -120,15 +159,23 @@ export class GraphService {
     request: { query: string; variables?: any },
     chainId: string,
     version: string,
+    source: GraphSource,
     useApiKey: boolean = false,
     retryLimit: number = 2,
     delay: number = 1000,
   ): Promise<any> {
     let attempts = 0;
     while (attempts < retryLimit) {
+      const finish = this.metricsService.startGraphUpstreamTimer(
+        chainId,
+        source,
+      );
       try {
-        return await this.executeToGraph(link, request, useApiKey);
+        const response = await this.executeToGraph(link, request, useApiKey);
+        finish('success');
+        return response;
       } catch (error) {
+        finish('error');
         this.logger.error(
           `Request failed chainId: ${chainId} version: ${version} \nmessage: ${error.message}`,
         );
@@ -192,7 +239,10 @@ export class GraphService {
         headers['Authorization'] = `Bearer ${this.authKey}`;
       }
 
-      const response = await axios.post(link, request, { headers });
+      const response = await axios.post(link, request, {
+        headers,
+        timeout: this.requestTimeout,
+      });
 
       if (response.data.errors) {
         throw new Error(
